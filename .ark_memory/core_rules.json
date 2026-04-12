@@ -1,0 +1,6 @@
+{
+    "modular_project_structure": "Organize project files into logical directories (e.g., core, models, api) to enhance maintainability and scalability.",
+    "use_pydantic_for_data_validation": "Utilize Pydantic models for defining request and response data schemas, ensuring automatic data validation and serialization.",
+    "centralized_configuration_management": "Manage application settings and environment variables through a dedicated configuration module (e.g., core/config.py) for easy access and modification.",
+    "modular_api_routing": "Structure API endpoints using FastAPI's APIRouter to group related routes and improve code organization."
+}
