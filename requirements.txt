@@ -1,4 +1,7 @@
 fastapi
 uvicorn[standard]
 pydantic
+pydantic-settings
 flake8
+litellm
+python-dotenv
