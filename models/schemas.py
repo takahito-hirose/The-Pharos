@@ -46,4 +46,6 @@ class ReviewResponse(BaseModel):
     security: CategoryScore
     performance: CategoryScore
     maintainability: CategoryScore
+    resilience: CategoryScore
+    testability: CategoryScore
     overall_summary: str

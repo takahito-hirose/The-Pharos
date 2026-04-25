@@ -1,19 +1,14 @@
 # ARK_MEMORY_SYSTEM_ACTIVE
-from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
-
-load_dotenv()
-
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
-    APP_NAME: str = "The Pharos"
-    API_V1_STR: str = "/api/v1"
-    # LLM model used by the AI Scoring Engine.
-    # Override via REVIEW_MODEL env var (e.g. "openai/gpt-4o").
     REVIEW_MODEL: str = "gemini/gemini-2.5-flash"
+    
+    # 修正ポイント1: APIキーを明示的に受け入れるように定義
+    gemini_api_key: Optional[str] = None
 
-    class Config:
-        env_file = ".env"
+    # 修正ポイント2: 他の知らない環境変数が来てもエラーにせず「無視」する設定
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-
-settings = Settings()
+settings = Settings()

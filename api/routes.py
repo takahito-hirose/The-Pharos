@@ -1,5 +1,6 @@
 # ARK_MEMORY_SYSTEM_ACTIVE
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -53,7 +54,7 @@ async def run_static_audit(request: StaticAuditRequest):
 
 
 # ---------------------------------------------------------------------------
-# Second defense line: AI Scoring Engine via LLM
+# Second defense line: AI Scoring Engine via LLM (Pentagram – 5 axes)
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """\
@@ -77,9 +78,36 @@ no extra keys:
     "issues": [<string>, ...],
     "suggestions": [<string>, ...]
   },
+  "resilience": {
+    "score": <int 0-100>,
+    "issues": [<string>, ...],
+    "suggestions": [<string>, ...]
+  },
+  "testability": {
+    "score": <int 0-100>,
+    "issues": [<string>, ...],
+    "suggestions": [<string>, ...]
+  },
   "overall_summary": "<one-paragraph summary>"
 }
 """
+
+# Pattern to extract the outermost JSON object from LLM output that may
+# contain markdown fences (```json ... ```) or surrounding prose.
+_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json(raw: str) -> str:
+    """Return the first top-level JSON object found in *raw*.
+
+    Local LLMs (e.g. Ollama/Gemma) often wrap their JSON in markdown code
+    fences or add explanatory text.  This helper strips everything outside
+    the outermost ``{ … }`` pair so that ``json.loads`` can succeed.
+    """
+    match = _JSON_OBJECT_RE.search(raw)
+    if match is None:
+        return raw  # fall through – let json.loads raise a clear error
+    return match.group(0)
 
 
 @router.post("/audit/ai", response_model=ReviewResponse)
@@ -120,7 +148,8 @@ async def run_ai_audit(request: ReviewRequest):
     raw_content = llm_response.choices[0].message.content
 
     try:
-        parsed = json.loads(raw_content)
+        cleaned = _extract_json(raw_content)
+        parsed = json.loads(cleaned)
         review = ReviewResponse(**parsed)
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(
