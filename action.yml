@@ -1,0 +1,109 @@
+name: 'The Pharos Code Audit'
+description: 'AI-powered multi-file code review based on the Pentagram axes.'
+inputs:
+  gemini_api_key:
+    description: 'API key for Gemini (Litellm)'
+    required: true
+  github_token:
+    description: 'GitHub token to post PR comments'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    - name: 📦 Install Pharos Dependencies
+      run: |
+        # github.action_path は Pharos のコードがある場所
+        cd ${{ github.action_path }}
+        pip install -r requirements.txt
+        pip install requests
+      shell: bash
+
+    - name: 🚀 Start Pharos and Run Audit
+      env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        PHAROS_DIR: ${{ github.action_path }}
+        TARGET_DIR: ${{ github.workspace }}
+      run: |
+        # 1. Pharosサーバーをバックグラウンド起動
+        cd $PHAROS_DIR
+        uvicorn main:app --host 0.0.0.0 --port 8000 &
+        sleep 5
+
+        # 2. 呼び出し元（ARKなど）のディレクトリに戻る
+        cd $TARGET_DIR
+        
+        # 3. 監査スクリプトを生成して実行
+        cat << 'EOF' > run_audit.py
+        import requests, os, json, subprocess
+
+        # 変更されたファイルを動的に取得
+        result = subprocess.run(
+            ["gh", "pr", "view", os.environ["PR_URL"], "--json", "files", "-q", ".files[].path"],
+            capture_output=True, text=True, check=True
+        )
+        
+        changed_files = [
+            f for f in result.stdout.splitlines() 
+            if f.endswith('.py') and not os.path.basename(f).startswith('test_')
+        ]
+        
+        target_paths = [os.path.abspath(f) for f in changed_files if os.path.exists(f)]
+
+        if not target_paths:
+            print("No relevant Python files changed. Skipping audit.")
+            exit(0)
+
+        print(f"Sending {len(target_paths)} files to Pharos...")
+        
+        try:
+            res = requests.post("http://localhost:8000/api/v1/audit/ai", json={"target_paths": target_paths}, timeout=120)
+            res.raise_for_status()
+            data = res.json()
+            
+            md = "## 🗼 The Pharos Multi-File Audit Report\n\n"
+            md += f"**Audited Files:** {len(target_paths)}\n\n"
+            md += "| Category | Score | Status |\n|---|---|---|\n"
+            
+            is_all_green = True
+            for cat in ["security", "performance", "maintainability", "resilience", "testability"]:
+                score = data.get(cat, {}).get("score", 0)
+                status = "🔴 Refine" if score < 80 else "🟢 Pass"
+                if score < 80: is_all_green = False
+                md += f"| **{cat.capitalize()}** | {score} | {status} |\n"
+            
+            md += f"\n**Summary:** {data.get('overall_summary', '')}\n"
+            
+            if not is_all_green:
+                md += "\n### 🚨 Issues Detected\n"
+                for cat in ["security", "performance", "maintainability", "resilience", "testability"]:
+                    cat_data = data.get(cat, {})
+                    if cat_data.get("score", 0) < 80:
+                        md += f"**{cat.capitalize()}**\n"
+                        for issue in cat_data.get("issues", []):
+                            md += f"- {issue}\n"
+            
+            with open("pr_comment.md", "w") as f:
+                f.write(md)
+            
+            subprocess.run(["gh", "pr", "comment", os.environ["PR_URL"], "-F", "pr_comment.md"])
+            print("Successfully posted PR comment!")
+            
+            if not is_all_green:
+                print("Audit failed. Scores below 80 detected.")
+                exit(1)
+                
+        except Exception as e:
+            print(f"Error connecting to Pharos: {e}")
+            exit(1)
+        EOF
+
+        python run_audit.py
+      shell: bash
