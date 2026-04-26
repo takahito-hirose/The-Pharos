@@ -2,13 +2,11 @@
 from typing import Optional
 from pydantic import BaseModel, Field
 
-
 class StaticAuditRequest(BaseModel):
     """
     Request model for static analysis audit.
     """
     target_path: str
-
 
 class StaticAuditResponse(BaseModel):
     """
@@ -19,16 +17,14 @@ class StaticAuditResponse(BaseModel):
     message: str
     issues: list[str] = Field(default_factory=list)
 
-
 # --- AI Scoring Engine schemas ---
 
 class ReviewRequest(BaseModel):
     """
-    Request model for AI code review.
+    Request model for AI code review (Multi-file support).
     """
-    target_path: str
+    target_paths: list[str]  # 🌟 ここを単数から複数のリスト(list[str])に変更！
     context: Optional[str] = None
-
 
 class CategoryScore(BaseModel):
     """
@@ -37,7 +33,6 @@ class CategoryScore(BaseModel):
     score: int
     issues: list[str] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
-
 
 class ReviewResponse(BaseModel):
     """
